@@ -48,9 +48,70 @@ docker build \
   -t vllm-node .
 ```
 
-### Copying the container to another Spark node
+### Option D: Using the Build Script (Recommended)
 
-To avoid extra network overhead, you can copy the image directly to your second Spark node via ConnectX 7 interface by using the following command:
+The `build-and-copy.sh` script automates the build process and optionally copies the image to another node. This is the recommended method for building and deploying to multiple Spark nodes.
+
+**Basic usage (build only):**
+
+```bash
+./build-and-copy.sh
+```
+
+**Build with a custom tag:**
+
+```bash
+./build-and-copy.sh --tag my-vllm-node
+```
+
+**Build and copy to another Spark node:**
+
+Using the same username as currently logged-in user:
+
+```bash
+./build-and-copy.sh --copy-to-host 192.168.177.12
+```
+
+Using a different username:
+
+```bash
+./build-and-copy.sh --copy-to-host 192.168.177.12 --user your_username
+```
+
+**Force rebuild vLLM source only:**
+
+```bash
+./build-and-copy.sh --rebuild-vllm
+```
+
+**Force rebuild all dependencies:**
+
+```bash
+./build-and-copy.sh --rebuild-deps
+```
+
+**Combined example (rebuild vLLM and copy to another node):**
+
+```bash
+./build-and-copy.sh --rebuild-vllm --copy-to-host 192.168.177.12
+```
+
+**Available options:**
+
+| Flag | Description |
+| :--- | :--- |
+| `-t, --tag <tag>` | Image tag (default: 'vllm-node') |
+| `--rebuild-deps` | Force rebuild all dependencies (sets CACHEBUST_DEPS) |
+| `--rebuild-vllm` | Force rebuild vLLM source only (sets CACHEBUST_VLLM) |
+| `-h, --copy-to-host <host>` | Host address to copy the image to after building |
+| `-u, --user <user>` | Username for SSH connection (default: current user) |
+| `--help` | Show help message |
+
+**IMPORTANT**: When copying to another node, make sure you use the Spark IP assigned to its ConnectX 7 interface (enp1s0f1np1), and not the 10G interface (enP7s7)!
+
+### Copying the container to another Spark node (Manual Method)
+
+Alternatively, you can manually copy the image directly to your second Spark node via ConnectX 7 interface by using the following command:
 
 ```bash
 docker save vllm-node | ssh your_username@another_spark_hostname_or_ip "docker load"
