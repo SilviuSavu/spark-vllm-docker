@@ -12,6 +12,18 @@ The Dockerfile builds from the main branch of VLLM, so depending on when you run
 
 ## CHANGELOG
 
+### 2025-12-14
+
+Converted to multi-stage Docker build with improved build times and reduced final image size. The builder stage is now separate from the runtime stage, excluding unnecessary build tools from the final image.
+
+Added timing statistics to `build-and-copy.sh` to track Docker build and image copy durations, displaying a summary at the end.
+
+Triton is now being built from the source, alongside with its companion triton_kernels package. The Triton version is set to v3.5.1 by default, but it can be changed by using `--triton-sha` parameter.
+
+Added new flags to `build-and-copy.sh`:
+- `--triton-sha <sha>`: Specify Triton commit SHA (defaults to v3.5.1 currently)
+- `--no-build`: Skip building and only copy existing image (requires `--copy-to-host`)
+
 ### 2025-12-11 update
 
 PR for MiniMax-M2 has been merged into main, so removed the temporary patch from Dockerfile.
@@ -109,6 +121,18 @@ Using a different username:
 ./build-and-copy.sh --rebuild-vllm --copy-to-host 192.168.177.12
 ```
 
+**Build with specific Triton commit:**
+
+```bash
+./build-and-copy.sh --triton-sha abc123def456
+```
+
+**Copy existing image without rebuilding:**
+
+```bash
+./build-and-copy.sh --no-build --copy-to-host 192.168.177.12
+```
+
 **Available options:**
 
 | Flag | Description |
@@ -116,8 +140,10 @@ Using a different username:
 | `-t, --tag <tag>` | Image tag (default: 'vllm-node') |
 | `--rebuild-deps` | Force rebuild all dependencies (sets CACHEBUST_DEPS) |
 | `--rebuild-vllm` | Force rebuild vLLM source only (sets CACHEBUST_VLLM) |
+| `--triton-sha <sha>` | Triton commit SHA (default: auto-detect latest main) |
 | `-h, --copy-to-host <host>` | Host address to copy the image to after building |
 | `-u, --user <user>` | Username for SSH connection (default: current user) |
+| `--no-build` | Skip building, only copy existing image (requires `--copy-to-host`) |
 | `--help` | Show help message |
 
 **IMPORTANT**: When copying to another node, make sure you use the Spark IP assigned to its ConnectX 7 interface (enp1s0f1np1), and not the 10G interface (enP7s7)!
