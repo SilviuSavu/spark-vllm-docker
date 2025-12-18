@@ -12,6 +12,10 @@ The Dockerfile builds from the main branch of VLLM, so depending on when you run
 
 ## CHANGELOG
 
+### 2025-12-18
+
+Added `launch-cluster.sh` convenience script for basic cluster management - see details below.
+
 ### 2025-12-15
 
 Updated `build-and-copy.sh` flags:
@@ -151,7 +155,84 @@ docker save vllm-node | ssh your_username@another_spark_hostname_or_ip "docker l
 
 -----
 
-## 2\. Running the Container
+## 2\. Launching the Cluster (Recommended)
+
+The `launch-cluster.sh` script simplifies the process of starting the cluster nodes. It handles Docker parameters, network interface detection, and node configuration automatically.
+
+### Basic Usage
+
+**Start the container (auto-detects everything):**
+
+```bash
+./launch-cluster.sh
+```
+
+This will:
+1.  Auto-detect the active InfiniBand and Ethernet interfaces.
+2.  Auto-detect the node IP.
+3.  Launch the container in interactive mode.
+4.  Start the Ray cluster node (head or worker depending on the IP).
+
+Assumptions and limitations:
+
+- It assumes that you've already set up passwordless SSH access on all nodes. If not, follow NVidia's [Connect Two Sparks Playbook](https://build.nvidia.com/spark/connect-two-sparks/stacked-sparks). I recommend setting up static IPs in the configuration instead of automatically assigning them every time, but this script should work with automatically assigned addresses too.
+- By default, it assumes that the container image name is `vllm-node`. If it differs, you need to specify it with `-t <name>` parameter.
+- If both ConnectX **physical** ports are utilized, and both have IP addresses, it will use whatever interface it finds first. Use `--eth-if` to override.
+- It will ignore IPs associated with the 2nd "clone" of the physical interface. For instance, the outermost port on Spark has two logical Ethernet interfaces: `enp1s0f1np1` and `enP2p1s0f1np1`. Only `enp1s0f1np1` will be used. To override, use `--eth-if` parameter.
+- It assumes that the same physical interfaces are named the same on all nodes (IOW, enp1s0f1np1 refers to the same physical port on all nodes). If it's not the case, you will have to launch cluster nodes manually or modify the script.
+- It will mount only `~/.cache/huggingface` to the container by default. If you want to mount other caches, you'll have to pass set `VLLMSPARK_EXTRA_DOCKER_ARGS` environment variable, e.g.: `VLLM_SPARK_EXTRA_DOCKER_ARGS="-v ~/.cache/vllm:/root/.cache/vllm" ./launch-cluster.sh ...`
+
+
+**Start in daemon mode (background):**
+
+```bash
+./launch-cluster.sh -d
+```
+
+**Stop the container:**
+
+```bash
+./launch-cluster.sh stop
+```
+
+**Check status:**
+
+```bash
+./launch-cluster.sh status
+```
+
+**Execute a command inside the running container:**
+
+```bash
+./launch-cluster.sh exec vllm serve ...
+```
+
+### Auto-Detection
+
+The script attempts to automatically detect:
+*   **Ethernet Interface:** The interface associated with the active InfiniBand device that has an IP address.
+*   **InfiniBand Interface:** The active InfiniBand devices. By default both active RoCE interfaces that correspond to active IB port(s) will be utilized.
+*   **Node Role:** Based on the detected IP address and the list of nodes (defaults to `192.168.177.11` as head and `192.168.177.12` as worker).
+
+### Manual Overrides
+
+You can override the auto-detected values if needed:
+
+```bash
+./launch-cluster.sh --nodes "10.0.0.1,10.0.0.2" --eth-if enp1s0f1np1 --ib-if rocep1s0f1
+```
+
+| Flag | Description |
+| :--- | :--- |
+| `-n, --nodes` | Comma-separated list of node IPs (Head node first). |
+| `-t` | Docker image name (default: `vllm-node`). |
+| `--name` | Container name (default: `vllm_node`). |
+| `--eth-if` | Ethernet interface name. |
+| `--ib-if` | InfiniBand interface name. |
+| `--check-config` | Check configuration and auto-detection without launching. |
+| `-d` | Run in daemon mode (detached). |
+
+## 3\. Running the Container (Manual)
 
 Ray and NCCL require specific Docker flags to function correctly across multiple nodes (Shared memory, Network namespace, and Hardware access).
 
@@ -210,7 +291,7 @@ docker run --privileged --gpus all -it --rm \
 
 -----
 
-## 3\. Using `run-cluster-node.sh`
+## 4\. Using `run-cluster-node.sh` (Internal)
 
 The script is used to configure the environment and launch Ray either in head or node mode.
 
@@ -268,7 +349,7 @@ You need to make sure you allocate IP addresses to them (no need to allocate IP 
 
 -----
 
-## 4\. Configuration Details
+## 5\. Configuration Details
 
 ### Environment Persistence
 
@@ -280,7 +361,7 @@ docker exec -it vllm_node bash
 
 All environment variables (NCCL, Ray, vLLM config) set by the startup script will be loaded automatically in this new session.
 
-## 5\. Using cluster mode for inference
+## 6\. Using cluster mode for inference
 
 First, start follow the instructions above to start the head container on your first Spark, and node container on the second Spark.
 Then, on the first Spark, run vllm like this:
@@ -297,7 +378,7 @@ docker exec -it vllm_node
 
 And execute vllm command inside.
 
-## 6\. Fastsafetensors
+## 7\. Fastsafetensors
 
 This build includes support for fastsafetensors loading which significantly improves loading speeds, especially on DGX Spark where MMAP performance is very poor currently.
 [Fasttensors](https://github.com/foundation-model-stack/fastsafetensors/) solve this issue by using more efficient multi-threaded loading while avoiding mmap.
@@ -311,7 +392,7 @@ To use this method, simply include `--load-format fastsafetensors` when running 
 HF_HUB_OFFLINE=1 vllm serve openai/gpt-oss-120b --port 8888 --host 0.0.0.0 --trust_remote_code --swap-space 16 --gpu-memory-utilization 0.7 -tp 2 --distributed-executor-backend ray --load-format fastsafetensors
 ```
 
-## 7\. Benchmarking
+## 8\. Benchmarking
 
 Follow the guidance in [VLLM Benchmark Suites](https://docs.vllm.ai/en/latest/contributing/benchmarks/) to download benchmarking dataset, and then run a benchmark with a command like this (assuming you are running on head node, otherwise specify `--host` parameter):
 

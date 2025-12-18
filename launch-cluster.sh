@@ -3,6 +3,14 @@
 # Default Configuration
 IMAGE_NAME="vllm-node"
 DEFAULT_CONTAINER_NAME="vllm_node"
+# Modify these if you want to pass additional docker args
+DOCKER_ARGS="-e NCCL_DEBUG=INFO -e NCCL_IGNORE_CPU_AFFINITY=1 -v ~/.cache/huggingface:/root/.cache/huggingface"
+
+# Append additional arguments from environment variable
+if [[ -n "$VLLMSPARK_EXTRA_DOCKER_ARGS" ]]; then
+    DOCKER_ARGS="$DOCKER_ARGS $VLLMSPARK_EXTRA_DOCKER_ARGS"
+fi
+
 # ETH_IF and IB_IF will be auto-detected if not provided
 ETH_IF=""
 IB_IF=""
@@ -353,8 +361,7 @@ start_cluster() {
     docker run -d --privileged --gpus all --rm \
         --ipc=host --network host \
         --name "$CONTAINER_NAME" \
-        -e NCCL_DEBUG=INFO -e NCCL_IGNORE_CPU_AFFINITY=1 \
-        -v ~/.cache/huggingface:/root/.cache/huggingface \
+        $DOCKER_ARGS \
         "$IMAGE_NAME" \
         ./run-cluster-node.sh \
         --role head \
@@ -363,13 +370,13 @@ start_cluster() {
         --ib-if "$IB_IF"
 
     # Start Worker Nodes
+    # Start Worker Nodes
     for worker in "${WORKER_NODES[@]}"; do
         echo "Starting Worker Node on $worker..."
         ssh "$worker" "docker run -d --privileged --gpus all --rm \
             --ipc=host --network host \
             --name $CONTAINER_NAME \
-            -e NCCL_DEBUG=INFO -e NCCL_IGNORE_CPU_AFFINITY=1 \
-            -v ~/.cache/huggingface:/root/.cache/huggingface \
+            $DOCKER_ARGS \
             $IMAGE_NAME \
             ./run-cluster-node.sh \
             --role node \
