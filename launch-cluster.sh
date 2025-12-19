@@ -139,9 +139,9 @@ echo "Action: $ACTION"
 
 # Check SSH connectivity to worker nodes
 if [[ "$ACTION" == "start" || "$ACTION" == "exec" || "$CHECK_CONFIG" == "true" ]]; then
-    if [ ${#WORKER_NODES[@]} -gt 0 ]; then
+    if [ ${#PEER_NODES[@]} -gt 0 ]; then
         echo "Checking SSH connectivity to worker nodes..."
-        for worker in "${WORKER_NODES[@]}"; do
+        for worker in "${PEER_NODES[@]}"; do
             if ! ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$worker" true 2>/dev/null; then
                 echo "Error: Passwordless SSH to $worker failed."
                 echo "  Please ensure SSH keys are configured and the host is reachable."
@@ -178,7 +178,7 @@ cleanup() {
     docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
     
     # Stop Workers
-    for worker in "${WORKER_NODES[@]}"; do
+    for worker in "${PEER_NODES[@]}"; do
         echo "Stopping worker node ($worker)..."
         ssh "$worker" "docker stop $CONTAINER_NAME" >/dev/null 2>&1 || true
     done
@@ -207,7 +207,7 @@ if [[ "$ACTION" == "status" ]]; then
     fi
     
     # Check Workers
-    for worker in "${WORKER_NODES[@]}"; do
+    for worker in "${PEER_NODES[@]}"; do
         if ssh "$worker" "docker ps | grep -q '$CONTAINER_NAME'"; then
              echo "[WORKER] $worker: Container '$CONTAINER_NAME' is RUNNING."
         else
@@ -234,7 +234,7 @@ check_cluster_running() {
     fi
     
     # Check Workers
-    for worker in "${WORKER_NODES[@]}"; do
+    for worker in "${PEER_NODES[@]}"; do
         if ssh "$worker" "docker ps --format '{{.Names}}' | grep -q '^${CONTAINER_NAME}$'"; then
              echo "Warning: Container '$CONTAINER_NAME' is already running on worker node ($worker)."
              running=true
@@ -271,7 +271,7 @@ start_cluster() {
 
     # Start Worker Nodes
     # Start Worker Nodes
-    for worker in "${WORKER_NODES[@]}"; do
+    for worker in "${PEER_NODES[@]}"; do
         echo "Starting Worker Node on $worker..."
         ssh "$worker" "docker run -d --privileged --gpus all --rm \
             --ipc=host --network host \
