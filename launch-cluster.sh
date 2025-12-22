@@ -135,6 +135,7 @@ fi
 echo "Head Node: $HEAD_IP"
 echo "Worker Nodes: ${PEER_NODES[*]}"
 echo "Container Name: $CONTAINER_NAME"
+echo "Image Name: $IMAGE_NAME"
 echo "Action: $ACTION"
 
 # Check SSH connectivity to worker nodes
