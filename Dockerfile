@@ -105,6 +105,63 @@ ARG CACHEBUST_DEPS=1
 # =========================================================
 FROM base AS builder
 
+ENV FLASHINFER_CUDA_ARCH_LIST="12.1f"
+WORKDIR $VLLM_BASE_DIR
+ARG FLASHINFER_REF=main
+
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+     uv pip install nvidia-nvshmem-cu13 "apache-tvm-ffi<0.2"
+
+# 4. Smart Git Clone (Fetch changes instead of full re-clone)
+# We mount a cache at /repo-cache. This directory persists on your host machine.
+RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
+    # 1. Go into the persistent cache directory
+    cd /repo-cache && \
+    # 2. Logic: Clone if missing, otherwise Fetch & Reset
+    if [ ! -d "flashinfer" ]; then \
+        echo "Cache miss: Cloning FlashInfer from scratch..." && \
+        git clone --recursive https://github.com/flashinfer-ai/flashinfer.git; \
+        if [ "$FLASHINFER_REF" != "main" ]; then \
+            cd flashinfer && \
+            git checkout ${FLASHINFER_REF}; \
+        fi; \
+    else \
+        echo "Cache hit: Fetching flashinfer updates..." && \
+        cd flashinfer && \
+        git fetch --all && \
+        git checkout ${FLASHINFER_REF} && \
+        if [ "${FLASHINFER_REF}" = "main" ]; then \
+            git reset --hard origin/main; \
+        fi && \
+        git submodule update --init --recursive && \
+        # Optimize git repo size
+        git gc --auto; \
+    fi && \
+    # 3. Copy the updated code from the cache to the actual container workspace
+    # We use 'cp -a' to preserve permissions
+    cp -a /repo-cache/flashinfer /workspace/flashinfer
+
+# Build FlashInfer wheels
+
+WORKDIR /workspace/flashinfer
+
+# flashinfer-python
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache,target=/root/.ccache \
+    sed -i -e 's/license = "Apache-2.0"/license = { text = "Apache-2.0" }/' -e '/license-files/d' pyproject.toml && \
+    uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
+
+# flashinfer-cubin
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache,target=/root/.ccache \
+    cd flashinfer-cubin && uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
+
+# flashinfer-jit-cache
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    --mount=type=cache,id=ccache,target=/root/.ccache \
+    cd flashinfer-jit-cache && \
+    uv build --no-build-isolation --wheel . --out-dir=/workspace/wheels -v
+
 # --- VLLM SOURCE CACHE BUSTER ---
 # Change THIS argument to force a fresh git clone and rebuild of vLLM
 # without re-installing the dependencies above.
@@ -206,25 +263,17 @@ RUN mkdir -p tiktoken_encodings && \
     wget -O tiktoken_encodings/o200k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken" && \
     wget -O tiktoken_encodings/cl100k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
 
-ARG FLASHINFER_PRE=""
-
-# Install FlashInfer packages
+# Copy artifacts from Builder Stage
+COPY --from=builder /workspace/wheels /workspace/wheels
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv pip install ${FLASHINFER_PRE} flashinfer-python --no-deps --index-url https://flashinfer.ai/whl && \
-    uv pip install ${FLASHINFER_PRE} flashinfer-cubin --index-url https://flashinfer.ai/whl && \
-    uv pip install ${FLASHINFER_PRE} flashinfer-jit-cache --index-url https://flashinfer.ai/whl/cu130
+    uv pip install /workspace/wheels/*.whl && \
+    rm -rf /workspace/wheels
 
 ARG PRE_TRANSFORMERS=0
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     if [ "$PRE_TRANSFORMERS" = "1" ]; then \
         uv pip install -U transformers --pre; \
     fi
-
-# Copy artifacts from Builder Stage
-COPY --from=builder /workspace/wheels /workspace/wheels
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv pip install /workspace/wheels/*.whl && \
-    rm -rf /workspace/wheels
 
 # Setup Env for Runtime
 ENV TORCH_CUDA_ARCH_LIST=12.1a
@@ -239,7 +288,7 @@ RUN chmod +x $VLLM_BASE_DIR/run-cluster-node.sh
 
 # Final extra deps
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv pip install ray[default] fastsafetensors "apache-tvm-ffi<0.2"
+    uv pip install ray[default] fastsafetensors
 
 # Cleanup
 # RUN uv pip uninstall absl-py apex argon2-cffi \
