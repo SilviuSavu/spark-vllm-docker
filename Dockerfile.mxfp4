@@ -176,6 +176,7 @@ RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
     if [ ! -d "vllm-mxfp4" ]; then \
         echo "Cache miss: Cloning vLLM from scratch..." && \
         git clone --recursive ${VLLM_REPO} vllm-mxfp4 && \
+        cd vllm-mxfp4 && \
         git checkout ${VLLM_SHA} ; \
     else \
         echo "Cache hit: Fetching updates..." && \
