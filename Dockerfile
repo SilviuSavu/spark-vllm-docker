@@ -294,6 +294,7 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
 # Remove triton-kernels as they are not compatible with this vLLM version yet
 RUN uv pip uninstall triton-kernels
 
+# Keeping it here for reference - this won't work as is without squashing layers
 # RUN uv pip uninstall absl-py apex argon2-cffi \
 #     argon2-cffi-bindings arrow asttokens astunparse async-lru audioread babel beautifulsoup4 \
 #     black bleach comm contourpy cycler datasets debugpy decorator defusedxml dllist dm-tree \
