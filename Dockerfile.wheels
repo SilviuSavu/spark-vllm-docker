@@ -1,9 +1,6 @@
 # syntax=docker/dockerfile:1.6
 
-# =========================================================
-# STAGE 1: Base Image (Installs Dependencies)
-# =========================================================
-FROM nvcr.io/nvidia/pytorch:26.01-py3 AS base
+FROM nvidia/cuda:13.1.1-devel-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
@@ -24,13 +21,16 @@ ENV UV_SYSTEM_PYTHON=1
 ENV UV_LINK_MODE=copy
 ENV UV_BREAK_SYSTEM_PACKAGES=1
 
-# Install runtime dependencies
-RUN apt update && \
-    apt install -y --no-install-recommends \
-    curl vim git \
+# Install minimal runtime dependencies (NCCL, Python)
+# Note: "devel" tools like cmake/gcc are NOT installed here to save space
+RUN apt update && apt upgrade -y \
+    && apt install -y --allow-change-held-packages --no-install-recommends \
+    python3 python3-pip python3-dev vim curl git wget jq \
+    libcudnn9-cuda-13 \
+    libnccl-dev libnccl2 libibverbs1 libibverbs-dev rdma-core \
     libxcb1 \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install uv && pip uninstall -y flash-attn 
+    && pip install uv
 
 # Set final working directory
 WORKDIR $VLLM_BASE_DIR
@@ -45,7 +45,7 @@ COPY fastsafetensors.patch .
 
 # Install fastsafetensors
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv pip install -U fastsafetensors ray[default] "apache-tvm-ffi<0.2"
+    uv pip install -U fastsafetensors
 
 # --- VLLM SOURCE CACHE BUSTER ---
 # Change THIS argument to force a fresh git clone and rebuild of vLLM
@@ -87,7 +87,6 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
 
 # Setup Env for Runtime
 ENV TORCH_CUDA_ARCH_LIST=12.1a
-ENV FLASHINFER_CUDA_ARCH_LIST="12.1f"
 ENV TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
 ENV TIKTOKEN_ENCODINGS_BASE=$VLLM_BASE_DIR/tiktoken_encodings
 
@@ -95,138 +94,7 @@ ENV TIKTOKEN_ENCODINGS_BASE=$VLLM_BASE_DIR/tiktoken_encodings
 COPY run-cluster-node.sh $VLLM_BASE_DIR/
 RUN chmod +x $VLLM_BASE_DIR/run-cluster-node.sh
 
-# Cleanup
+# Final extra deps
+RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+    uv pip install ray[default]
 
-# Remove triton-kernels as they are not compatible with this vLLM version yet
-RUN uv pip uninstall triton-kernels
-
-# Cleanup unneeded packages to reduce image size
-RUN uv pip uninstall absl-py apex argon2-cffi \
-    argon2-cffi-bindings arrow asttokens astunparse async-lru audioread babel beautifulsoup4 \
-    black bleach comm contourpy cycler datasets debugpy decorator defusedxml dllist dm-tree \
-    execnet executing expecttest fastjsonschema fonttools fqdn gast hypothesis \
-    ipykernel ipython ipython_pygments_lexers isoduration isort jedi joblib jupyter-events \
-    jupyter-lsp jupyter_client jupyter_core jupyter_server jupyter_server_terminals jupyterlab \
-    jupyterlab_code_formatter jupyterlab_code_formatter jupyterlab_pygments jupyterlab_server \
-    jupyterlab_tensorboard_pro jupytext kiwisolver matplotlib matplotlib-inline matplotlib-inline \
-    mistune ml_dtypes mock nbclient nbconvert nbformat nest-asyncio notebook notebook_shim \
-    opt_einsum optree outlines_core overrides pandas pandocfilters parso pexpect polygraphy pooch \
-    pyarrow pycocotools pytest-flakefinder pytest-rerunfailures pytest-shard pytest-xdist \
-    scikit-learn scipy Send2Trash soundfile soupsieve soxr spin stack-data \
-    wcwidth webcolors xdoctest Werkzeug
-
-# Final build
-FROM scratch
-
-# 1. Copy everything from build stage except for the deleted files
-COPY --from=base / /
-
-# 2. Restore NVIDIA container environment variables
-ENV PATH=/usr/local/lib/python3.12/dist-packages/torch_tensorrt/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/mpi/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/ucx/bin:/opt/amazon/efa/bin:/opt/tensorrt/bin
-ENV GDRCOPY_VERSION=2.5.1
-ENV HPCX_VERSION=2.25.1-RC2
-ENV MOFED_VERSION=5.4-rdmacore56.0
-ENV OPENUCX_VERSION=1.20.0
-ENV OPENMPI_VERSION=4.1.7
-ENV RDMACORE_VERSION=56.0
-ENV EFA_VERSION=1.43.1
-ENV AWS_OFI_NCCL_VERSION=1.17.0
-ENV OPAL_PREFIX=/opt/hpcx/ompi
-ENV OMPI_MCA_coll_hcoll_enable=0
-ENV CUDA_VERSION=13.1.1.006
-ENV CUDA_DRIVER_VERSION=590.48.01
-ENV NVVM_VERSION=13.1.115
-ENV DOCA_VERSION=3.1.0
-ENV _CUDA_COMPAT_PATH=/usr/local/cuda/compat
-ENV ENV=/etc/shinit_v2
-ENV BASH_ENV=/etc/bash.bashrc
-ENV SHELL=/bin/bash
-ENV NVIDIA_REQUIRE_CUDA=cuda>=9.0
-ENV NCCL_VERSION=2.29.stable.20260109
-ENV CUBLAS_VERSION=13.2.1.1
-ENV CUFFT_VERSION=12.1.0.78
-ENV CURAND_VERSION=10.4.1.81
-ENV CUSPARSE_VERSION=12.7.3.1
-ENV CUSPARSELT_VERSION=0.8.1.1
-ENV CUSOLVER_VERSION=12.0.9.81
-ENV NPP_VERSION=13.0.3.3
-ENV NVJPEG_VERSION=13.0.3.75
-ENV CUFILE_VERSION=1.16.1.26
-ENV NVJITLINK_VERSION=13.1.115
-ENV NVFATBIN_VERSION=13.1.115
-ENV CUBLASMP_VERSION=0.7.0.125
-ENV NVSHMEM_VERSION=3.4.5
-ENV CUDLA_VERSION=13.1.1.006
-ENV NVPTXCOMPILER_VERSION=13.1.115
-ENV CUDNN_VERSION=9.17.1.4
-ENV CUDNN_FRONTEND_VERSION=1.17.0
-ENV TRT_VERSION=10.14.1.48+cuda13.0
-ENV TRTOSS_VERSION=
-ENV NSIGHT_SYSTEMS_VERSION=2025.6.1.190
-ENV NSIGHT_COMPUTE_VERSION=2025.4.1.2
-ENV DALI_VERSION=1.53.0
-ENV DALI_BUILD=
-ENV DALI_URL_SUFFIX=130
-ENV POLYGRAPHY_VERSION=0.49.26
-ENV TRANSFORMER_ENGINE_VERSION=2.11
-ENV MODEL_OPT_VERSION=0.40.0
-ENV CUDA_ARCH_LIST="12.0 12.1"
-ENV MAXSMVER=121
-ENV NVRX_VERSION=0.5.0
-ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
-ENV NVIDIA_PRODUCT_NAME=PyTorch
-ENV CUDA_COMPONENT_LIST="cccl crt nvrtc driver-dev culibos-dev cudart cudart-dev nvcc tileiras"
-ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:/usr/local/cuda/lib64/stubs:
-ENV PYTORCH_BUILD_VERSION=2.10.0a0+a36e1d3
-ENV PYTORCH_VERSION=2.10.0a0+a36e1d3
-ENV PYTORCH_BUILD_NUMBER=0
-ENV NVIDIA_PYTORCH_VERSION=26.01
-ENV NVFUSER_BUILD_VERSION=5d8efce
-ENV NVFUSER_VERSION=5d8efce
-ENV TORCHAO_BUILD_VERSION=+git1272f3cf
-ENV TORCHTITAN_BUILD_VERSION=0.2.0+gite98ae995
-ENV PIP_BREAK_SYSTEM_PACKAGES=1
-ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-ENV PIP_CONSTRAINT=/etc/pip/constraint.txt
-ENV NVPL_LAPACK_MATH_MODE=PEDANTIC
-ENV PYTHONIOENCODING=utf-8
-ENV LC_ALL=C.UTF-8
-ENV PIP_DEFAULT_TIMEOUT=100
-ENV JUPYTER_PORT=8888
-ENV TENSORBOARD_PORT=6006
-ENV UCC_CL_BASIC_TLS=^sharp
-ENV UCC_EC_CUDA_EXEC_NUM_THREADS=256
-ENV TORCH_CUDA_ARCH_LIST=12.1a
-ENV PYTORCH_HOME=/opt/pytorch/pytorch
-ENV CUDA_HOME=/usr/local/cuda
-ENV TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
-ENV TRITON_PTXAS_PATH=/usr/local/cuda/bin/ptxas
-ENV TRITON_CUOBJDUMP_PATH=/usr/local/cuda/bin/cuobjdump
-ENV TRITON_NVDISASM_PATH=/usr/local/cuda/bin/nvdisasm
-ENV TRITON_CUDACRT_PATH=/usr/local/cuda/include
-ENV TRITON_CUDART_PATH=/usr/local/cuda/include
-ENV TRITON_CUPTI_LIB_PATH=/usr/local/cuda/lib64
-ENV TRITON_CUPTI_INCLUDE_PATH=/usr/local/cuda/include
-ENV COCOAPI_VERSION=2.0+nv0.8.1
-ENV CUDA_BINARY_LOADER_THREAD_COUNT=8
-ENV CUDA_MODULE_LOADING=LAZY
-ENV TORCH_NCCL_USE_COMM_NONBLOCKING=0
-ENV TORCHINDUCTOR_LOOP_ORDERING_AFTER_FUSION=0
-ENV NVIDIA_BUILD_ID=256811084
-ENV DEBIAN_FRONTEND=noninteractive
-ENV VLLM_BASE_DIR=/workspace/vllm
-ENV MAX_JOBS=16
-ENV CMAKE_BUILD_PARALLEL_LEVEL=16
-ENV NINJAFLAGS=-j16
-ENV MAKEFLAGS=-j16
-ENV PIP_CACHE_DIR=/root/.cache/pip
-ENV UV_CACHE_DIR=/root/.cache/uv
-ENV UV_SYSTEM_PYTHON=1
-ENV UV_LINK_MODE=copy
-ENV UV_BREAK_SYSTEM_PACKAGES=1
-ENV FLASHINFER_CUDA_ARCH_LIST=12.1f
-ENV TIKTOKEN_ENCODINGS_BASE=/workspace/vllm/tiktoken_encodings
-
-CMD ["/bin/bash"]
