@@ -23,7 +23,7 @@ GLM_FLASH_AWQ_ARGS=(
     "--max-num-batched-tokens 4096"
     "--max-num-seqs 64"
     "--gpu-memory-utilization 0.7"
-    "--port 8888"
+    "--port 8000"
     "--host 0.0.0.0"
 )
 
@@ -34,7 +34,7 @@ GLM_FLASH_AWQ_ARGS=(
 GPT_OSS_MODEL="openai/gpt-oss-120b"
 GPT_OSS_CONTAINER="vllm-node-mxfp4"
 GPT_OSS_ARGS=(
-    "--port 8888"
+    "--port 8000"
     "--host 0.0.0.0"
     "--enable-auto-tool-choice"
     "--tool-call-parser openai"
