@@ -164,6 +164,12 @@ Don't do it every time you rebuild, because it will slow down compilation times.
 
 For periodic maintenance, I recommend using a filter: `docker builder prune --filter until=72h`
 
+### 2026-02-11
+
+#### Configurable GPU Architecture
+
+Added `--gpu-arch <arch>` flag to `build-and-copy.sh`. This allows specifying the target GPU architecture (e.g., `12.0f`) during the build process, instead of being hardcoded to `12.1a`. This argument controls both `TORCH_CUDA_ARCH_LIST` and `FLASHINFER_CUDA_ARCH_LIST` build arguments.
+
 ### 2026-02-10
 
 #### Cache Directory Mounting
@@ -525,8 +531,10 @@ Using a provided build script is recommended, but if you want to build using `do
 | :--- | :--- | :--- |
 | `CACHEBUST_DEPS` | `1` | Change this to force a re-download of PyTorch, FlashInfer, and system dependencies. |
 | `CACHEBUST_VLLM` | `1` | Change this to force a fresh git clone and rebuild of vLLM source code. |
-| `TRITON_REF` | `v3.5.1` | Triton commit SHA, branch, or tag to build. |
+| `TRITON_REF` | `v3.6.0` | Triton commit SHA, branch, or tag to build - currently ignored. |
 | `VLLM_REF` | `main` | vLLM commit SHA, branch, or tag to build. |
+| `TORCH_CUDA_ARCH_LIST` | `12.1a` | Target GPU architecture list for PyTorch. |
+| `FLASHINFER_CUDA_ARCH_LIST` | `12.1a` | Target GPU architecture list for FlashInfer. |
 | `BUILD_JOBS` | `16` | Number of parallel build jobs (default: 16). |
 | `FLASHINFER_PRE` | `""` | Set to `--pre` to use pre-release versions of FlashInfer. |
 | `PRE_TRANSFORMERS` | `0` | Set to `1` to install pre-release transformers (5.0.0rc or higher). |
@@ -548,6 +556,7 @@ Supported build arguments for `Dockerfile.wheels`:
 | `WHEELS_FROM_GITHUB_RELEASE` | `0` | Set to `1` to use GitHub release wheels instead of nightly wheels. |
 | `FLASHINFER_PRE` | `""` | Set to `--pre` to use pre-release versions of FlashInfer. |
 | `PRE_TRANSFORMERS` | `0` | Set to `1` to install pre-release transformers (5.0.0rc or higher). |
+| `TORCH_CUDA_ARCH_LIST` | `12.1a` | Target GPU architecture list. |
 
 ### Using the Build Script (Recommended)
 
@@ -622,6 +631,11 @@ Using a different username:
 ```bash
 ./build-and-copy.sh --triton-ref abc123def456
 ```
+**Build for specific GPU architecture:**
+
+```bash
+./build-and-copy.sh --gpu-arch 12.0f
+```
 
 **Copy existing image without rebuilding:**
 
@@ -633,6 +647,8 @@ Using a different username:
 
 | Flag | Description |
 | :--- | :--- |
+| `-t, --tag <tag>` | Image tag (default: 'vllm-node') |
+| `--gpu-arch <arch>` | Target GPU architecture (default: '12.1a') |
 | `-t, --tag <tag>` | Image tag (default: 'vllm-node') |
 | `--rebuild-deps` | Force rebuild all dependencies (sets CACHEBUST_DEPS) |
 | `--rebuild-vllm` | Force rebuild vLLM source only (sets CACHEBUST_VLLM) |
@@ -1041,4 +1057,4 @@ The `hf-download.sh` script provides a convenient way to download models from Hu
 
 ### Hardware Architecture
 
-**Note:** The Dockerfile defaults to `TORCH_CUDA_ARCH_LIST=12.1a` (NVIDIA GB10). If you are using different hardware, update the `ENV` variable in the Dockerfile before building.
+**Note:** This project targets `12.1a` architecture (NVIDIA GB10 / DGX Spark). If you are using different hardware, you can use `--gpu-arch` flag in `./build-and-copy.sh`.
