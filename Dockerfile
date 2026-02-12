@@ -119,12 +119,11 @@ RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
     else \
         echo "Cache hit: Fetching flashinfer updates..." && \
         cd flashinfer && \
-        git fetch --all && \
-        git checkout ${FLASHINFER_REF} && \
-        if [ "${FLASHINFER_REF}" = "main" ]; then \
-            git reset --hard origin/main; \
-        fi && \
+        git fetch origin && \
+        git fetch origin --tags && \
+        (git checkout --detach origin/${FLASHINFER_REF} 2>/dev/null || git checkout ${FLASHINFER_REF}) && \
         git submodule update --init --recursive && \
+        git clean -fdx && \
         # Optimize git repo size
         git gc --auto; \
     fi && \
@@ -177,12 +176,11 @@ RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
     else \
         echo "Cache hit: Fetching updates..." && \
         cd vllm && \
-        git fetch --all && \
-        git checkout ${VLLM_REF} && \
-        if [ "${VLLM_REF}" = "main" ]; then \
-            git reset --hard origin/main; \
-        fi && \
+        git fetch origin && \
+        git fetch origin --tags && \
+        (git checkout --detach origin/${VLLM_REF} 2>/dev/null || git checkout ${VLLM_REF}) && \
         git submodule update --init --recursive && \
+        git clean -fdx && \
         # Optimize git repo size
         git gc --auto; \
     fi && \

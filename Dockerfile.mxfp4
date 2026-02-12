@@ -183,12 +183,11 @@ RUN --mount=type=cache,id=repo-cache,target=/repo-cache \
     else \
         echo "Cache hit: Fetching updates..." && \
         cd vllm-mxfp4 && \
-        git fetch --all && \
-        git checkout ${VLLM_SHA} && \
-        if [ "${VLLM_SHA}" = "main" ]; then \
-            git reset --hard origin/main; \
-        fi && \
+        git fetch origin && \
+        git fetch origin --tags && \
+        (git checkout --detach origin/${VLLM_SHA} 2>/dev/null || git checkout ${VLLM_SHA}) && \
         git submodule update --init --recursive && \
+        git clean -fdx && \
         # Optimize git repo size
         git gc --auto; \
     fi && \
