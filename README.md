@@ -164,6 +164,16 @@ Don't do it every time you rebuild, because it will slow down compilation times.
 
 For periodic maintenance, I recommend using a filter: `docker builder prune --filter until=72h`
 
+### 2026-02-12
+
+Added a mod for Qwen3-Coder-Next-FP8 that fixes:
+
+- A bug with Triton allocator (https://github.com/vllm-project/vllm/issues/33857) that prevented the model to run in a cluster.
+- A bug that introduced crash when `--enable-prefix-caching` is on (https://github.com/vllm-project/vllm/issues/34361).
+- A bug that significantly impacted the performance on Spark (https://github.com/vllm-project/vllm/issues/34413).
+
+This mod was included in `qwen3-coder-next-fp8` recipe.
+
 ### 2026-02-11
 
 #### Configurable GPU Architecture
