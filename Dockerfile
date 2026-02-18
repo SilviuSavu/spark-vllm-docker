@@ -173,18 +173,12 @@ RUN if [ -n "$VLLM_PRS" ]; then \
         done; \
     fi
 
-ARG PRE_TRANSFORMERS=0
-
 # Prepare build requirements
 RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     python3 use_existing_torch.py && \
     sed -i "/flashinfer/d" requirements/cuda.txt && \
     sed -i '/^triton\b/d' requirements/test.txt && \
     sed -i '/^fastsafetensors\b/d' requirements/test.txt && \
-    if [ "$PRE_TRANSFORMERS" = "1" ]; then \
-        sed -i '/^transformers\b/d' requirements/common.txt; \
-        sed -i '/^transformers\b/d' requirements/test.txt; \
-    fi && \
     uv pip install -r requirements/build.txt
 
 # Apply Patches
@@ -247,15 +241,17 @@ RUN mkdir -p tiktoken_encodings && \
     wget -O tiktoken_encodings/o200k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken" && \
     wget -O tiktoken_encodings/cl100k_base.tiktoken "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
 
+ARG PRE_TRANSFORMERS=0
+
 # Install wheels from host ./wheels/ (bind-mounted from build context — no layer bloat)
+# With --tf5: override vLLM's transformers<5 constraint to get transformers>=5
 RUN --mount=type=bind,source=wheels,target=/workspace/wheels \
     --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
-    uv pip install /workspace/wheels/*.whl
-
-ARG PRE_TRANSFORMERS=0
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
     if [ "$PRE_TRANSFORMERS" = "1" ]; then \
-        uv pip install -U transformers --pre; \
+        echo "transformers>=5.0.0" > /tmp/tf-override.txt && \
+        uv pip install /workspace/wheels/*.whl --override /tmp/tf-override.txt; \
+    else \
+        uv pip install /workspace/wheels/*.whl; \
     fi
 
 # Setup environment for runtime

@@ -23,6 +23,8 @@ BUILD_JOBS="16"
 GPU_ARCH_LIST="12.1a"
 WHEELS_REPO="eugr/spark-vllm-docker"
 FLASHINFER_RELEASE_TAG="prebuilt-flashinfer-current"
+# Space-separated list of GPU architectures for which prebuilt wheels are available
+PREBUILT_WHEELS_SUPPORTED_ARCHS="12.1a"
 
 cleanup() {
     if [ -n "$TMP_IMAGE" ] && [ -f "$TMP_IMAGE" ]; then
@@ -69,6 +71,16 @@ try_download_wheels() {
     local TAG="$1"
     local PREFIX="$2"
     local WHEELS_DIR="./wheels"
+
+    local arch
+    for arch in $PREBUILT_WHEELS_SUPPORTED_ARCHS; do
+        [ "$arch" = "$GPU_ARCH_LIST" ] && break
+        arch=""
+    done
+    if [ -z "$arch" ]; then
+        echo "GPU arch '$GPU_ARCH_LIST' not supported by prebuilt wheels (supported: $PREBUILT_WHEELS_SUPPORTED_ARCHS) — skipping download."
+        return 1
+    fi
 
     local RELEASE_JSON
     RELEASE_JSON=$(curl -sf --connect-timeout 10 \
@@ -134,7 +146,7 @@ usage() {
     echo "      --copy-parallel           : Copy to all hosts in parallel instead of serially."
     echo "  -j, --build-jobs <jobs>       : Number of concurrent build jobs (default: ${BUILD_JOBS})"
     echo "  -u, --user <user>             : Username for ssh command (default: \$USER)"
-    echo "  --pre-tf, --pre-transformers  : Install transformers 5.0.0rc0 or higher"
+    echo "  --tf5                         : Install transformers>=5 (aliases: --pre-tf, --pre-transformers)"
     echo "  --exp-mxfp4, --experimental-mxfp4 : Build with experimental native MXFP4 support"
     echo "  --apply-vllm-pr <pr-num>      : Apply a specific PR patch to vLLM source. Can be specified multiple times."
     echo "  --full-log                    : Enable full build logging (--progress=plain)"
@@ -183,7 +195,7 @@ while [[ "$#" -gt 0 ]]; do
         -j|--build-jobs) BUILD_JOBS="$2"; shift ;;
         -u|--user) SSH_USER="$2"; shift ;;
         --copy-parallel) PARALLEL_COPY=true ;;
-        --pre-tf|--pre-transformers) PRE_TRANSFORMERS=true ;;
+        --tf5|--pre-tf|--pre-transformers) PRE_TRANSFORMERS=true ;;
         --exp-mxfp4|--experimental-mxfp4) EXP_MXFP4=true ;;
         --apply-vllm-pr)
             if [ -n "$2" ] && [[ "$2" != -* ]]; then
@@ -213,7 +225,7 @@ fi
 
 if [ "$EXP_MXFP4" = true ]; then
     if [ "$VLLM_REF_SET" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --vllm-ref"; exit 1; fi
-    if [ "$PRE_TRANSFORMERS" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --pre-transformers"; exit 1; fi
+    if [ "$PRE_TRANSFORMERS" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --tf5"; exit 1; fi
     if [ "$REBUILD_FLASHINFER" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --rebuild-flashinfer"; exit 1; fi
     if [ "$REBUILD_VLLM" = true ]; then echo "Error: --exp-mxfp4 is incompatible with --rebuild-vllm"; exit 1; fi
 fi
@@ -315,9 +327,21 @@ if [ "$NO_BUILD" = false ]; then
             VLLM_WHEELS_EXIST=true
         fi
 
+        if [ "$VLLM_REF_SET" = true ] || [ -n "$VLLM_PRS" ]; then
+            REBUILD_VLLM=true
+        fi
+
         if [ "$REBUILD_VLLM" = true ] || [ "$VLLM_WHEELS_EXIST" = false ]; then
             if [ "$REBUILD_VLLM" = true ]; then
-                echo "Rebuilding vLLM wheels (--rebuild-vllm specified)..."
+                if [ "$VLLM_REF_SET" = true ] && [ -n "$VLLM_PRS" ]; then
+                    echo "Rebuilding vLLM wheels (--vllm-ref and --apply-vllm-pr specified)..."
+                elif [ "$VLLM_REF_SET" = true ]; then
+                    echo "Rebuilding vLLM wheels (--vllm-ref specified)..."
+                elif [ -n "$VLLM_PRS" ]; then
+                    echo "Rebuilding vLLM wheels (--apply-vllm-pr specified)..."
+                else
+                    echo "Rebuilding vLLM wheels (--rebuild-vllm specified)..."
+                fi
             else
                 echo "No vLLM wheels found in ./wheels/ — building..."
             fi
@@ -344,10 +368,6 @@ if [ "$NO_BUILD" = false ]; then
                 VLLM_CMD+=("--build-arg" "VLLM_PRS=$VLLM_PRS")
             fi
 
-            if [ "$PRE_TRANSFORMERS" = true ]; then
-                echo "Using transformers>=5.0.0..."
-                VLLM_CMD+=("--build-arg" "PRE_TRANSFORMERS=1")
-            fi
 
             VLLM_CMD+=(".")
 
@@ -380,6 +400,7 @@ if [ "$NO_BUILD" = false ]; then
             "${COMMON_BUILD_FLAGS[@]}")
 
         if [ "$PRE_TRANSFORMERS" = true ]; then
+            echo "Using transformers>=5.0.0..."
             RUNNER_CMD+=("--build-arg" "PRE_TRANSFORMERS=1")
         fi
 
