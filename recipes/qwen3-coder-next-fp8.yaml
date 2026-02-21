@@ -42,6 +42,7 @@ command: |
     --attention-backend flashinfer \
     --enable-prefix-caching \
     --max-model-len {max_model_len} \
+    --max-num-batched-tokens 16384 \
     -tp {tensor_parallel} \
     --distributed-executor-backend ray
 
