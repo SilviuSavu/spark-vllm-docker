@@ -76,7 +76,7 @@ fi
 
 # Step 5: Stop the container gracefully (sends SIGTERM, waits for shutdown)
 echo "Stopping container '${CONTAINER_NAME}' (SIGTERM, ${TIMEOUT}s grace period)..."
-docker stop --time "$TIMEOUT" "$CONTAINER_NAME"
+docker stop --timeout "$TIMEOUT" "$CONTAINER_NAME"
 
 echo "Container stopped."
 
