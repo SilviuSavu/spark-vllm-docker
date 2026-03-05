@@ -26,7 +26,7 @@ defaults:
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
   max_model_len: 204800
-  tool_server_port: 8888
+  tool_server: 192.168.1.12:8081
 
 # Environment variables
 env: {}
@@ -47,5 +47,5 @@ command: |
     --max-num-batched-tokens 16384 \
     -tp {tensor_parallel} \
     --distributed-executor-backend ray \
-    --tool-server localhost:{tool_server_port}
+    --tool-server {tool_server}
 
