@@ -481,6 +481,14 @@ def generate_launch_script(recipe: dict[str, Any], overrides: dict[str, Any], is
         else:
             command = command + ' ' + extra_args_str
     
+    # Start MCP tool server in background if --tool-server is used
+    tool_server_port = params.get("tool_server_port")
+    if tool_server_port and '--tool-server' in command:
+        lines.append("# Start MCP tool server in background")
+        lines.append(f"python3 /workspace/mcp_server.py --port {tool_server_port} &")
+        lines.append("sleep 2")
+        lines.append("")
+
     lines.append("# Run the model")
     lines.append(command.strip())
     lines.append("")

@@ -17,6 +17,7 @@ container: vllm-node
 # Mod required to fix slowness and crash in the cluster (tracking https://github.com/vllm-project/vllm/issues/33857)
 mods:
   - mods/fix-qwen3-coder-next
+  - mods/mcp-tool-loop
 
 # Default settings (can be overridden via CLI)
 defaults:
@@ -25,6 +26,7 @@ defaults:
   tensor_parallel: 2
   gpu_memory_utilization: 0.85
   max_model_len: 204800
+  tool_server_port: 8888
 
 # Environment variables
 env: {}
@@ -44,5 +46,6 @@ command: |
     --max-model-len {max_model_len} \
     --max-num-batched-tokens 16384 \
     -tp {tensor_parallel} \
-    --distributed-executor-backend ray
+    --distributed-executor-backend ray \
+    --tool-server localhost:{tool_server_port}
 
