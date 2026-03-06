@@ -1,0 +1,36 @@
+{
+  "timestamp_utc": "2026-02-21T16:27:36Z",
+  "repository": "qwen3-coder-next-fp8",
+  "git": {
+    "branch": "main",
+    "commit": "349a270c1e370c1108fda24b05d92a368b8c617f",
+    "dirty_worktree": true
+  },
+  "build": {
+    "script": "./build-and-copy.sh",
+    "command": "./build-and-copy.sh --tag vllm-node --gpu-arch 12.1a",
+    "args": ["--tag", "vllm-node", "--gpu-arch", "12.1a"],
+    "docker_build_args": {"BUILD_JOBS":"16","TORCH_CUDA_ARCH_LIST":"12.1a","FLASHINFER_CUDA_ARCH_LIST":"12.1a"}
+  },
+  "image": {
+    "primary_tag": "vllm-node",
+    "trace_tag": "vllm-node:349a270c1e37",
+    "id": "sha256:1f44ffac0b9f54e82cf76a8510643de8ca20b1b1516e04eeb5539e4a37b909e9",
+    "repo_digests": []
+  },
+  "artifacts": {
+    "image_tar": "artifacts/vllm-node-349a270c1e37.tar",
+    "image_tar_size_bytes": 25180631040,
+    "image_tar_sha256": "2fd78e29af90feb140fd90f30f3ea57764c2839940b8c0d013cd429ada04337b",
+    "build_command": "artifacts/build-command.txt",
+    "git_status": "artifacts/git-status.txt",
+    "git_untracked": "artifacts/git-untracked.txt",
+    "git_head": "artifacts/git-head.txt",
+    "git_branch": "artifacts/git-branch.txt",
+    "git_last_commit": "artifacts/git-last-commit.txt",
+    "git_working_tree_diff": "artifacts/git-working-tree.diff"
+  },
+  "environment": {
+    "docker_version": {"Client":{"Platform":{"Name":"Docker Engine - Community"},"Version":"29.1.3","ApiVersion":"1.52","DefaultAPIVersion":"1.52","GitCommit":"f52814d","GoVersion":"go1.25.5","Os":"linux","Arch":"arm64","BuildTime":"Fri Dec 12 14:50:13 2025","Context":"default"},"Server":{"Platform":{"Name":"Docker Engine - Community"},"Version":"29.1.3","ApiVersion":"1.52","MinAPIVersion":"1.44","Os":"linux","Arch":"arm64","Components":[{"Name":"Engine","Version":"29.1.3","Details":{"ApiVersion":"1.52","Arch":"arm64","BuildTime":"Fri Dec 12 14:50:13 2025","Experimental":"false","GitCommit":"fbf3ed2","GoVersion":"go1.25.5","KernelVersion":"6.17.0-1008-nvidia","MinAPIVersion":"1.44","Os":"linux"}},{"Name":"containerd","Version":"v2.2.1","Details":{"GitCommit":"dea7da592f5d1d2b7755e3a161be07f43fad8f75"}},{"Name":"runc","Version":"1.3.4","Details":{"GitCommit":"v1.3.4-0-gd6d73eb8"}},{"Name":"docker-init","Version":"0.19.0","Details":{"GitCommit":"de40ad0"}}],"GitCommit":"fbf3ed2","GoVersion":"go1.25.5","KernelVersion":"6.17.0-1008-nvidia","BuildTime":"2025-12-12T14:50:13.000000000+00:00"}}
+  }
+}

@@ -1,0 +1,5 @@
+349a270c1e370c1108fda24b05d92a368b8c617f
+Eugene Rakhmatulin
+eugr@eugr.com
+2026-02-19T13:47:59-08:00
+More robust handling of wheels downloads

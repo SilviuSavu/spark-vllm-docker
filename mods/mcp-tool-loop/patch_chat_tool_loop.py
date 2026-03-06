@@ -5,6 +5,9 @@ Patch vLLM Chat Completions to add server-side MCP tool execution loop.
 When tool_server is configured, non-streaming chat completions that return
 tool_calls will automatically execute those tools via MCP and loop until
 the model produces a final text response (or max rounds is reached).
+
+Includes context management to prevent conversation history from exceeding
+the model's context window.
 """
 
 import sys
@@ -125,8 +128,91 @@ def patch_serving():
             return self.create_error_response(e)
 
         # --- MCP Tool Execution Loop (non-streaming only) ---
+        # Context management constants
         max_rounds = 300
+        MAX_TOOL_OUTPUT_CHARS = 6000    # truncate individual tool results
+        MAX_HISTORY_ROUNDS = 20         # keep last N rounds of tool interaction
         round_num = 0
+        total_compacted_calls = 0       # cumulative tool calls removed by compaction
+
+        def _truncate_tool_output(text, max_chars=MAX_TOOL_OUTPUT_CHARS):
+            \"\"\"Truncate tool output, keeping head and tail for context.\"\"\"
+            if not isinstance(text, str) or len(text) <= max_chars:
+                return text
+            head = max_chars * 2 // 3
+            tail = max_chars // 3
+            return (text[:head]
+                    + f"\\n\\n... [{len(text) - head - tail} chars truncated] ...\\n\\n"
+                    + text[-tail:])
+
+        def _count_round_messages(messages):
+            \"\"\"Count assistant+tool message groups after the initial system+user messages.\"\"\"
+            rounds = 0
+            i = 0
+            for msg in messages:
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    rounds += 1
+            return rounds
+
+        def _compact_history(messages, keep_rounds, current_round):
+            \"\"\"Sliding window: keep system+user prompt and last keep_rounds of tool interaction.\"\"\"
+            # Split into: original preamble (system+user only) and everything after
+            preamble_end = 0
+            for i, msg in enumerate(messages):
+                if msg.get("role") in ("system", "user"):
+                    preamble_end = i + 1
+                else:
+                    break
+            preamble = messages[:preamble_end]
+            rest = messages[preamble_end:]
+
+            # Group rest into tool rounds: each starts with assistant(tool_calls)
+            # Skip any non-tool-call messages (like previous summaries)
+            rounds = []
+            current_group = []
+            for msg in rest:
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    if current_group:
+                        rounds.append(current_group)
+                    current_group = [msg]
+                elif current_group:
+                    current_group.append(msg)
+                # else: skip orphaned messages (old summaries etc)
+            if current_group:
+                rounds.append(current_group)
+
+            if len(rounds) <= keep_rounds:
+                return messages  # nothing to compact
+
+            # Split into old (to summarize) and recent (to keep)
+            old_rounds = rounds[:-keep_rounds]
+            keep = rounds[-keep_rounds:]
+
+            # Count tool calls in removed rounds
+            total_removed = 0
+            tool_counts = {}
+            for rnd in old_rounds:
+                for msg in rnd:
+                    if msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            name = tc.get("function", {}).get("name", "?")
+                            tool_counts[name] = tool_counts.get(name, 0) + 1
+                            total_removed += 1
+
+            tool_summary = ", ".join(f"{n}x{c}" for n, c in tool_counts.items())
+            # Use nonlocal to accumulate across compactions
+            nonlocal total_compacted_calls
+            total_compacted_calls += total_removed
+            summary_text = (
+                f"[Context compressed: rounds 1-{current_round - keep_rounds} "
+                f"removed ({total_compacted_calls} total tool calls). "
+                f"Continuing from round {current_round - keep_rounds + 1}.]"
+            )
+
+            # Reconstruct: preamble + single summary + recent rounds
+            recent = [msg for rnd in keep for msg in rnd]
+            return preamble + [{"role": "assistant", "content": summary_text}] + recent
+
         while (isinstance(response, ChatCompletionResponse)
                and self.tool_server is not None
                and response.choices
@@ -168,17 +254,37 @@ def patch_serving():
                         logger.warning("MCP tool call %s failed: %s",
                                        tc.function.name, e)
                         result_text = f"Error: {e}"
+
+                    # Layer 1: Truncate large tool outputs
+                    result_text = _truncate_tool_output(result_text)
+
                     request.messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
                         "content": result_text,
                     })
 
+            # Layer 2: Sliding window - compact old rounds
+            n_rounds = _count_round_messages(request.messages)
+            if n_rounds > MAX_HISTORY_ROUNDS:
+                old_len = len(request.messages)
+                request.messages = _compact_history(
+                    request.messages, MAX_HISTORY_ROUNDS, round_num)
+                logger.info("MCP context compacted: %d -> %d messages "
+                            "(%d rounds kept)",
+                            old_len, len(request.messages),
+                            MAX_HISTORY_ROUNDS)
+
             # Re-render the request with updated messages
             result = await self.render_chat_request(request)
             if isinstance(result, ErrorResponse):
+                logger.warning("MCP loop render failed round %d: %s",
+                               round_num, result)
                 return result
             conversation, engine_prompts = result
+            prompt_len = self._extract_prompt_len(engine_prompts[0])
+            logger.info("MCP loop round %d: %d messages, prompt_len=%d",
+                        round_num, len(request.messages), prompt_len)
 
             # Rebuild generator and regenerate
             try:

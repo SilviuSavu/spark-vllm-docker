@@ -1,0 +1,9 @@
+AGENTS.md
+artifacts/build-manifest.json
+artifacts/git-branch.txt
+artifacts/git-head.txt
+artifacts/git-last-commit.txt
+artifacts/git-status.txt
+artifacts/git-untracked.txt
+artifacts/git-working-tree.diff
+artifacts/vllm-node-349a270c1e37.tar

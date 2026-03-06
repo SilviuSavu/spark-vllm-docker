@@ -585,9 +585,9 @@ start_cluster() {
     local head_cmd_args=()
     if [[ "$SOLO_MODE" == "true" ]]; then
         if [[ ${#MOD_PATHS[@]} -gt 0 ]]; then
-             head_cmd_args=(bash -c "echo Waiting for mod application...; while [ ! -f /tmp/mod_done ]; do sleep 1; done; echo Mod applied, starting container...; exec sleep infinity")
+             head_cmd_args=(bash -c "echo Waiting for mod application...; while [ ! -f /tmp/mod_done ]; do sleep 1; done; echo Mod applied, waiting for command...; while [ ! -f /tmp/vllm_cmd.sh ]; do sleep 1; done; echo Starting server...; exec bash /tmp/vllm_cmd.sh")
         else
-             head_cmd_args=(sleep infinity)
+             head_cmd_args=(bash -c "echo Waiting for command...; while [ ! -f /tmp/vllm_cmd.sh ]; do sleep 1; done; echo Starting server...; exec bash /tmp/vllm_cmd.sh")
         fi
     else
         if [[ ${#MOD_PATHS[@]} -gt 0 ]]; then
@@ -697,15 +697,20 @@ wait_for_cluster() {
 if [[ "$ACTION" == "exec" ]]; then
     start_cluster
     echo "Executing command on head node: $COMMAND_TO_RUN"
-    
-    # Check if running in a TTY to avoid "input device is not a TTY" error
-    if [ -t 0 ]; then
-        DOCKER_EXEC_FLAGS="-it"
+
+    if [[ "$SOLO_MODE" == "true" ]]; then
+        # Write command to file; PID 1 will exec it and docker logs captures output
+        echo "$COMMAND_TO_RUN" | docker exec -i "$CONTAINER_NAME" bash -c 'cat > /tmp/vllm_cmd.sh && chmod +x /tmp/vllm_cmd.sh'
+        docker logs -f "$CONTAINER_NAME"
     else
-        DOCKER_EXEC_FLAGS="-i"
+        # Cluster mode: exec directly (Ray nodes need separate handling)
+        if [ -t 0 ]; then
+            DOCKER_EXEC_FLAGS="-it"
+        else
+            DOCKER_EXEC_FLAGS="-i"
+        fi
+        docker exec $DOCKER_EXEC_FLAGS "$CONTAINER_NAME" bash -i -c "$COMMAND_TO_RUN"
     fi
-    
-    docker exec $DOCKER_EXEC_FLAGS "$CONTAINER_NAME" bash -i -c "$COMMAND_TO_RUN"
 elif [[ "$ACTION" == "start" ]]; then
     start_cluster
     if [[ "$DAEMON_MODE" == "true" ]]; then
